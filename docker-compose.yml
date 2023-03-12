@@ -1,0 +1,14 @@
+version: "2"
+services:
+  reddit-crossposter:
+    build: .
+    image: thaiduongme/reddit-crossposter:latest
+    depends_on:
+      - redis
+    volumes:
+      - ./ecosystem.config.js:/reddit-crossposter/ecosystem.config.js
+      - ./.env:/reddit-crossposter/.env
+  redis:
+    image: "redis:latest"
+    ports:
+      - "6379"
