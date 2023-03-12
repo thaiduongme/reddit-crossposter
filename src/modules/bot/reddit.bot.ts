@@ -70,12 +70,6 @@ export class RedditCrossposterBot {
       uploader,
     } = opts;
 
-    // Automatically close a new tab
-    // myBrowser.on("targetcreated", async (target) => {
-    //   const page = await target.page();
-    //   if (page) page.close();
-    // });
-
     // Initialize cursor
     const cursor = createCursor(page, await getRandomPagePoint(page));
     await installMouseHelper(page);

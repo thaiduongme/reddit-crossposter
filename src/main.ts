@@ -2,20 +2,12 @@ import { config, validateEnvironmentVars } from "./config/configuration";
 import { GologinBrowser } from "./modules/browser/gologin.browser";
 import { MongodbHelper } from "./database/mongodb.db";
 import { RedisService } from "./modules/redis/redis.service";
-import {
-  CaptchaSolvingProvider,
-  FarmStage,
-  ProxyProvider,
-  ProxyType,
-} from "./loaders/enums";
+import { ProxyProvider, ProxyType } from "./loaders/enums";
 import { ProxyDB } from "./modules/proxy/proxy.db";
 import { REDIS_GOLOGIN_API_KEY } from "./loaders/constants";
 import { Proxy } from "./modules/proxy/interfaces/proxy.interface";
 import { RedditCrossposterBot } from "./modules/bot/reddit.bot";
-import {
-  AccountEntity,
-  IAccountEntity,
-} from "./modules/account/entities/account.entity";
+import { IAccountEntity } from "./modules/account/entities/account.entity";
 import { HydratedDocument } from "mongoose";
 import { ChatGPTClient } from "./modules/chatgpt/chatgpt";
 import delay from "delay";
@@ -24,11 +16,7 @@ import perf from "execution-time";
 import { HistoryDB } from "./modules/history/history.db";
 import { PostDB } from "./modules/post/post.db";
 import { ImgurUploader } from "./modules/uploader/imgur.uploader";
-import { ISubredditEntity } from "./modules/subreddit/entities/subreddit.entity";
 import { IAccountDB } from "./modules/account/interfaces/account-db.interface";
-import { PostAccountDB } from "./modules/account/post-account.db";
-import { PostSubredditDB } from "./modules/subreddit/post-subreddit.db";
-import { ISubredditDB } from "./modules/subreddit/interfaces/subreddit-db.interface";
 import { CrosspostAccountDB } from "./modules/account/crosspost-account.db";
 
 async function main() {
@@ -70,7 +58,9 @@ async function main() {
     );
   }
 
-  console.log(`[Cluster ${process.env.pm_id}][AccountDB] Initializing`);
+  console.log(
+    `[Cluster ${process.env.pm_id}][CrosspostAccountDB] Initializing`
+  );
   const accountDB: IAccountDB = new CrosspostAccountDB(
     config.redditCrossposter.minimumDaysOld,
     config.redditCrossposter.minimumKarma,
@@ -115,7 +105,7 @@ async function main() {
       }
 
       console.log(
-        `[Cluster ${process.env.pm_id}][AccountDB] Getting an account`
+        `[Cluster ${process.env.pm_id}][CrosspostAccountDB] Getting an account`
       );
       while (!account) {
         account = await accountDB.startUsing();
