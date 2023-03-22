@@ -26,6 +26,9 @@ RUN \
     chmod +x /etc/service/xvfb/run
 RUN apt-get install -y libnss3 libgtk-3-0 libgbm-dev libasound2
 
+# To kill process on port library (cross-port-killer)
+RUN apt-get install lsof
+
 WORKDIR /reddit-crossposter
 COPY package.json .
 COPY yarn.lock .

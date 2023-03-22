@@ -38,6 +38,7 @@ import { API_URL } from "./utils/common.js";
 import { get, isPortReachable } from "./utils/utils.js";
 const AWS = require("aws-sdk");
 const { config } = require("../../../config/configuration");
+import { kill } from "cross-port-killer";
 
 const exec = util.promisify(execNonPromise);
 
@@ -1226,12 +1227,41 @@ export class GoLogin {
     if (!this.port) {
       throw new Error("Empty GoLogin port");
     }
+    await kill(this.port);
+    // return new Promise((resolve, reject) => {
+    //   const command = `fuser -k TERM -n tcp ${this.port}`;
+    //   const ls = spawn(command, {
+    //     shell: true,
+    //   });
 
-    const ls = await spawn("fuser", ["-k TERM", `-n tcp ${this.port}`], {
-      shell: true,
-    });
+    //   ls.stdout.on("data", (data) => {
+    //     console.log(
+    //       `[Cluster ${process.env.pm_id}][Close Browser] stdout: ${data}`
+    //     );
+    //   });
 
-    debug("browser killed");
+    //   ls.stderr.on("data", (data) => {
+    //     console.error(
+    //       `[Cluster ${process.env.pm_id}][Close Browser] stderr: ${data}`
+    //     );
+    //   });
+
+    //   ls.on("close", (code) => {
+    //     if (code === 0) {
+    //       resolve();
+    //     } else {
+    //       reject(
+    //         new Error(
+    //           `[Cluster ${process.env.pm_id}][Close Browser] Command failed with exit code ${code}`
+    //         )
+    //       );
+    //     }
+    //   });
+
+    //   ls.on("error", (err) => {
+    //     reject("[Cluster ${process.env.pm_id}][Close Browser] " + err);
+    //   });
+    // });
   }
 
   async sanitizeProfile() {
