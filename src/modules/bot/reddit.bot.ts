@@ -251,6 +251,9 @@ export class RedditCrossposterBot {
       timeout: 60000,
     });
 
+    // Getting current post Id
+    const postId = this.getPostIdFromUrl(this.page.url());
+
     // Simulate reading
     console.log(
       `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Delay to simulate reading`
@@ -310,7 +313,8 @@ export class RedditCrossposterBot {
       `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Getting a subreddit to crosspost to`
     );
     const crosspostToSubreddit =
-      await this.subredditDB.getSubredditToCrosspostTo(targetSubreddit);
+      (await this.subredditDB.getSubredditToCrosspostToByPostId(postId)) ||
+      (await this.subredditDB.getSubredditToCrosspostTo(targetSubreddit));
 
     // Waiting for a new tab
     console.log(
@@ -490,7 +494,6 @@ export class RedditCrossposterBot {
     console.log(
       `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Saving history`
     );
-    const postId = this.getPostIdFromUrl(this.page.url());
     await this.historyDB.add({
       action: HistoryAction.CROSS_POST,
       author: this.account,

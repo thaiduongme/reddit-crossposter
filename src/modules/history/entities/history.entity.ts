@@ -8,6 +8,7 @@ export interface IHistoryEntity {
   createdDate?: Date;
   targetSubreddit?: string;
   status: boolean;
+  tags?: string[];
 }
 
 export const historySchema = new Schema<IHistoryEntity>({
@@ -42,6 +43,10 @@ export const historySchema = new Schema<IHistoryEntity>({
   status: {
     type: Boolean,
     default: true,
+  },
+  tags: {
+    type: [String],
+    default: [],
   },
 });
 
