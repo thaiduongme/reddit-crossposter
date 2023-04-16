@@ -12,7 +12,7 @@ export class ClusterDB {
     console.log(`${LOG_PREFIX}[ClusterDB] Initializing`);
     const clusterId = +process.env.pm_id;
     console.log(`${LOG_PREFIX}[ClusterDB] ID: ${clusterId}`);
-    const botType = BotType.KARMA_FARMER;
+    const botType = BotType.CROSS_POSTER;
     console.log(`${LOG_PREFIX}[ClusterDB] Bot type: ${botType}`);
     const ip = await getIp();
     console.log(`${LOG_PREFIX}[ClusterDB] IP: ${ip}`);
