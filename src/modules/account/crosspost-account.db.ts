@@ -18,82 +18,80 @@ export class CrosspostAccountDB implements IAccountDB {
   ) {}
 
   async startUsing(): Promise<HydratedDocument<IAccountEntity>> {
-    // // Getting all accounts sorted by createdDate
-    // // Limiting them by numberOfRunningCluster * numAccountsPerCluster
-    // const NUM_RUNNING_CLUSTERS = (await ClusterDB.getNumRunningClusters()) || 1;
+    // Getting all accounts sorted by createdDate
+    // Limiting them by numberOfRunningCluster * numAccountsPerCluster
+    const NUM_RUNNING_CLUSTERS = (await ClusterDB.getNumRunningClusters()) || 1;
 
-    // const accounts = await AccountEntity.aggregate([
-    //   // Find accounts that:
-    //   // - status: true
-    //   // - createdDate: minimum 5 days ago
-    //   {
-    //     $match: {
-    //       status: true,
-    //       createdDate: {
-    //         $lte: new Date(
-    //           Date.now() - this.minimumDaysOld * 24 * 60 * 60 * 1000
-    //         ),
-    //       },
-    //     },
-    //   },
-    //   // Sort by createdDate ascending
-    //   // This will help us to get the same set with a decent number of clusters
-    //   { $sort: { createdDate: 1 } },
-    //   // Limit by NUM_RUNNING_CLUSTERS * MAX_ACCOUNTS_PER_DAY
-    //   { $limit: NUM_RUNNING_CLUSTERS * this.numAccountsPerCluster },
-    //   // Sort by nextCrosspost descending
-    //   { $sort: { nextCrosspost: -1 } },
-    // ]).exec();
+    const accounts = await AccountEntity.aggregate([
+      // Find accounts that:
+      // - status: true
+      // - createdDate: minimum 5 days ago
+      {
+        $match: {
+          status: true,
+          createdDate: {
+            $lte: new Date(
+              Date.now() - this.minimumDaysOld * 24 * 60 * 60 * 1000
+            ),
+          },
+        },
+      },
+      // Sort by createdDate ascending
+      // This will help us to get the same set with a decent number of clusters
+      { $sort: { createdDate: 1 } },
+      // Limit by NUM_RUNNING_CLUSTERS * MAX_ACCOUNTS_PER_DAY
+      { $limit: NUM_RUNNING_CLUSTERS * this.numAccountsPerCluster },
+      // Sort by nextCrosspost descending
+      { $sort: { nextCrosspost: -1 } },
+    ]).exec();
 
-    // await logInfo(`[AccountDB] Total: ${accounts.length} (accounts)`);
+    await logInfo(`[AccountDB] Total: ${accounts.length} (accounts)`);
 
-    // for (const account of accounts) {
-    //   this.currentAccount = await AccountEntity.findOneAndUpdate(
-    //     {
-    //       _id: account._id,
-    //       farmStage: {
-    //         $in: this.frequency.map(
-    //           (frequencyByStage) => frequencyByStage.stage
-    //         ),
-    //       },
-    //       $and: [
-    //         {
-    //           $or: [
-    //             {
-    //               using: { $exists: false },
-    //             },
-    //             { using: false },
-    //           ],
-    //         },
-    //         {
-    //           $or: [
-    //             {
-    //               nextCrosspost: { $exists: false },
-    //             },
-    //             {
-    //               nextCrosspost: { $lte: new Date() },
-    //             },
-    //           ],
-    //         },
-    //       ],
-    //     },
-    //     {
-    //       using: true,
-    //       lastUsed: new Date(),
-    //     },
-    //     {
-    //       new: true,
-    //     }
-    //   );
-    //   if (this.currentAccount) break;
-    // }
+    for (const account of accounts) {
+      this.currentAccount = await AccountEntity.findOneAndUpdate(
+        {
+          _id: account._id,
+          farmStage: {
+            $in: this.frequency.map(
+              (frequencyByStage) => frequencyByStage.stage
+            ),
+          },
+          $and: [
+            {
+              $or: [
+                {
+                  using: { $exists: false },
+                },
+                { using: false },
+              ],
+            },
+            {
+              $or: [
+                {
+                  nextCrosspost: { $exists: false },
+                },
+                {
+                  nextCrosspost: { $lte: new Date() },
+                },
+              ],
+            },
+          ],
+        },
+        {
+          using: true,
+          lastUsed: new Date(),
+        },
+        {
+          new: true,
+        }
+      );
+      if (this.currentAccount) break;
+    }
 
-    // if (!this.currentAccount) {
-    //   return null;
-    // }
-    this.currentAccount = await AccountEntity.findOne({
-      username: "norma_2764",
-    });
+    if (!this.currentAccount) {
+      return null;
+    }
+
     return this.currentAccount;
   }
 

@@ -3,7 +3,7 @@ module.exports = {
     {
       name: "Reddit Crossposter",
       script: "dist/main.js",
-      instances: 1,
+      instances: 4,
       exec_mode: "cluster",
       autorestart: true,
       merge_logs: true,
