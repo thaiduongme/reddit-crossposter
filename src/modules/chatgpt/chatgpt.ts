@@ -1,5 +1,5 @@
 import axios from "axios";
-import { choice, delay } from "../utils/other.utils";
+import { choice, delay, logError } from "../utils/other.utils";
 
 export class ChatGPTClient {
   constructor(
@@ -19,16 +19,15 @@ export class ChatGPTClient {
   async rewriteTitle(title: string): Promise<string> {
     const numTries = 3;
     for (let i = 1; i <= numTries; i++) {
+      let result: string;
       try {
         let prompt = `Rewrite original title to post on Reddit. Read & analyze some post title examples below to rewrite, because it may have the same pattern that you need to follow.\nExamples:\n1. Let'S Spend This Day In Bed\n2. Don'T You Love A Sexy Petite Brunette ;)\n3. It Is Tradition To Give A Kiss When You See A Naughty Redhead\n4. Wait For It…So Suckable They Should Be In Your Mouth.\n5. She Loves It\n\nAgain, rewrite original title. Output the following format: ~new title~ (include ~ character at the beginning and the end)\nOriginal title: ${title}`;
-        const result = await this.sendMessage(prompt);
+        result = await this.sendMessage(prompt);
         const regex = /~([^~]+)~/g;
         return regex.exec(result)[1];
       } catch (err) {
-        console.error(
-          `[Cluster ${process.env.pm_id}][ChatGPT] Failed to rewrite: ${title}` +
-            err
-        );
+        await logError(`[ChatGPT] Failed to rewrite: ${title}` + err);
+        await logError(`[ChatGPT] Response: ${result}`);
       }
       await delay(5000);
     }
@@ -98,15 +97,14 @@ export class ChatGPTClient {
         }
         return choice(questions);
       } catch (err) {
-        console.error(
-          `[Cluster ${process.env.pm_id}][ChatGPT] Failed to generate a question for Reddit, ` +
-            err
+        await logError(
+          `[ChatGPT] Failed to generate a question for Reddit, ` + err
         );
       }
       await delay(5000);
     }
     throw new Error(
-      `[Cluster ${process.env.pm_id}][ChatGPT] Failed to generate a question for Reddit, maximum retried`
+      `[ChatGPT] Failed to generate a question for Reddit, maximum retried`
     );
   }
 
@@ -138,14 +136,13 @@ export class ChatGPTClient {
         const regex = /Best\scomment:\s`([^`]+)`/g;
         return regex.exec(response)[1];
       } catch (err) {
-        console.error(
-          `[Cluster ${process.env.pm_id}][ChatGPT] Failed to generate a comment for Reddit, ` +
-            err
+        await logError(
+          `[ChatGPT] Failed to generate a comment for Reddit, ` + err
         );
       }
     }
     throw new Error(
-      `[Cluster ${process.env.pm_id}][ChatGPT] Failed to generate a comment for Reddit, maximum retried`
+      `[ChatGPT] Failed to generate a comment for Reddit, maximum retried`
     );
   }
 }

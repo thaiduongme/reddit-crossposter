@@ -11,6 +11,8 @@ import {
   choice,
   isValidateLink,
   findAsync,
+  logInfo,
+  logError,
 } from "../utils/other.utils";
 import { HydratedDocument } from "mongoose";
 import { IAccountEntity } from "../account/entities/account.entity";
@@ -137,9 +139,7 @@ export class RedditCrossposterBot {
       dialog.accept();
     });
 
-    console.log(
-      `[Cluster ${process.env.pm_id}][${account.username}][Initialize] Visiting Reddit home page`
-    );
+    await logInfo(`[Initialize] Visiting Reddit home page`);
     await page.goto("https://reddit.com");
 
     return new RedditCrossposterBot(
@@ -203,72 +203,54 @@ export class RedditCrossposterBot {
 
   async crosspost(): Promise<void> {
     // Go to target subreddit
-    console.log(
-      `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Getting a subreddit to crosspost`
-    );
+    await logInfo(`[Crosspost] Getting a subreddit to crosspost`);
     const targetSubreddit = await this.subredditDB.getSubredditToCrosspost();
+    if (!targetSubreddit) {
+      throw new Error("[Crosspost] Couldn't find a subreddit to crosspost");
+    }
+    await logInfo(
+      `[Crosspost] Subreddit to crosspost: ${targetSubreddit.name}`
+    );
+    await logInfo(`[Crosspost] Visiting target subreddit`);
     await this.visitSubreddit(targetSubreddit);
     await delay(randint(5000, 10000));
 
-    // Get all posts
-    console.log(
-      `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Getting all post titles`
-    );
-    const allPostTitles = (await this.page.$$(
-      `.Post:not(.promotedlink) h3`
-    )) as ElementHandle<Element>[];
+    // Scroll and click a random post
+    await logInfo(`[Crosspost] Scrolling and click a random post`);
+    const postBox = await this._scrollAndClickARandomPost();
 
-    // Choose a random post
-    console.log(
-      `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Select a random post title`
-    );
-    let randomPostTitle = choice(allPostTitles);
+    // Get postId & title
+    await logInfo(`[Crosspost] Getting postId and post title`);
+    const postId = this.getPostIdFromUrl(this.page.url());
     const postTitle = await this.page.evaluate(
       (el) => el.textContent,
-      randomPostTitle
+      await this.page.waitForSelector(`div[data-test-id="post-content"] h1`, {
+        timeout: 15000,
+      })
     );
+    await logInfo(`[Crosspost] Cross-posting post: ${postTitle}`);
 
-    // Scroll to that element
-    console.log(
-      `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Scrolling to that post title`
-    );
-    await this._scrollToElement(randomPostTitle);
-    await delay(randint(2000, 5000));
+    // Scroll postbox for a while
+    await logInfo(`[Crosspost] Scrolling post content for a little`);
+    await this._simulateScroll(randint(3, 5), postBox);
+    await delay(randint(1000, 2000));
 
-    // Click on that element
-    console.log(
-      `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Clicking on that post`
-    );
-    await this.cursor.move(randomPostTitle, { paddingPercentage: 45 });
-    await this.cursor.click();
-
-    // Wait for overlay to be appeared
-    console.log(
-      `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Waiting for postbox`
-    );
-    const postBox = await this.page.waitForSelector(`#overlayScrollContainer`, {
-      visible: true,
-      timeout: 60000,
+    // Scroll back to the top
+    await logInfo(`[Crosspost] Scrolling back to the top`);
+    await this._scroll({
+      size: randint(150, 300),
+      delay: randint(300, 1000),
+      direction: "top",
+      scrollElement: postBox,
     });
-
-    // Getting current post Id
-    const postId = this.getPostIdFromUrl(this.page.url());
-
-    // Simulate reading
-    console.log(
-      `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Delay to simulate reading`
-    );
-    await delay(randint(5000, 15000));
+    await delay(randint(1000, 2000));
 
     // Click on Share
-    console.log(
-      `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Clicking on Share`
-    );
+    await logInfo(`[Crosspost] Clicking 'Share'`);
     await this.cursor.move(
       await this.page.waitForSelector(
         `div[data-test-id="post-content"] button[data-click-id="share"]`,
         {
-          visible: true,
           timeout: 15000,
         }
       ),
@@ -277,14 +259,12 @@ export class RedditCrossposterBot {
       }
     );
     await this.cursor.click();
+    await delay(randint(500, 1000));
 
     // Click on Crosspost
-    console.log(
-      `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Clicking Crosspost`
-    );
+    await logInfo(`[Crosspost] Clicking 'Crosspost'`);
     await this.cursor.move(
       (await this.page.waitForXPath(`//span[text()="crosspost"]`, {
-        visible: true,
         timeout: 5000,
       })) as ElementHandle<Element>,
       {
@@ -295,45 +275,38 @@ export class RedditCrossposterBot {
     await delay(randint(2000, 3000));
 
     // Handle a new opening tab
-    console.log(
-      `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Getting new tab`
-    );
+    await logInfo(`[Crosspost] Getting new tab`);
     const browser = await this.browser.getBrowser();
     const pages = await browser.pages();
     this.page = pages[pages.length - 1];
     await this.page.bringToFront();
     // Re-create cursor
+    await logInfo(`[Crosspost] Re-creating a new cursor`);
     this.cursor = createCursor(this.page, await getRandomPagePoint(this.page));
-    console.log(
-      `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Waiting for new tab navigation`
-    );
+    await logInfo(`[Crosspost] Waiting for new tab navigation`);
 
     // Getting a subreddit to crosspost to
-    console.log(
-      `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Getting a subreddit to crosspost to`
-    );
+    await logInfo(`[Crosspost] Getting a subreddit to crosspost to`);
     const crosspostToSubreddit =
       (await this.subredditDB.getSubredditToCrosspostToByPostId(postId)) ||
       (await this.subredditDB.getSubredditToCrosspostTo(targetSubreddit));
+    await logInfo(
+      `[Crosspost] Crosspost to subreddit: ${crosspostToSubreddit.name}`
+    );
 
     // Waiting for a new tab
-    console.log(
-      `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Waiting for new tab to load`
-    );
+    await logInfo(`[Crosspost] Waiting for new tab to load`);
     await this.page.waitForSelector(`a[data-click-id="subreddit"]`, {
-      visible: true,
       timeout: 15000,
     });
     await delay(randint(2000, 5000));
 
     // Click choose community
-    console.log(
-      `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Clicking on Community`
-    );
+    await logInfo(`[Crosspost] Clicking on Community`);
     await this.cursor.move(
       await this.page.waitForSelector(
         `input[placeholder="Choose a community"]`,
-        { visible: true, timeout: 60000 }
+        { timeout: 60000 }
       ),
       {
         paddingPercentage: 45,
@@ -343,21 +316,16 @@ export class RedditCrossposterBot {
     await delay(randint(1000, 2000));
 
     // Type the subreddit name
-    console.log(
-      `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Typing subreddit to crosspost to`
-    );
+    await logInfo(`[Crosspost] Typing subreddit to crosspost to`);
     await this._type(crosspostToSubreddit.name);
     await delay(randint(500, 1000));
 
     // Click out side
-    console.log(
-      `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Clicking outside`
-    );
+    await logInfo(`[Crosspost] Clicking outside`);
     await this.cursor.move(
       (await this.page.waitForXPath(
         `//div[contains(text(), "Crossposting to Reddit")]`,
         {
-          visible: true,
           timeout: 15000,
         }
       )) as ElementHandle<Element>,
@@ -368,28 +336,22 @@ export class RedditCrossposterBot {
     await this.cursor.click();
 
     // Waiting for subreddit to load
-    console.log(
-      `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Waiting for crosspost to subreddit to load`
-    );
+    await logInfo(`[Crosspost] Waiting for crosspost to subreddit to load`);
     await this.page.waitForSelector(
       `a[href*="${crosspostToSubreddit.name}" i]`,
       {
-        visible: true,
         timeout: 60000,
       }
     );
     await delay(randint(2000, 5000));
 
     // Enable NSFW
-    console.log(
-      `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Enabling NSFW`
-    );
+    await logInfo(`[Crosspost] Enabling NSFW`);
     await this.cursor.move(
       await this.page.waitForSelector(
         `button[aria-label="Mark as Not Safe For Work"]:not([disabled])`,
         {
           timeout: 15000,
-          visible: true,
         }
       ),
       { paddingPercentage: 45 }
@@ -402,20 +364,15 @@ export class RedditCrossposterBot {
       `button[aria-label="Add flair"]:not([disabled])`
     );
     if (flairBtn) {
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Clicking Flair button`
-      );
+      await logInfo(`[Crosspost] Clicking Flair button`);
       await this.cursor.move(flairBtn, { paddingPercentage: 45 });
       await this.cursor.click();
       await delay(randint(1000, 2000));
 
       // Get list of flairs
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Getting a list of flairs`
-      );
+      await logInfo(`[Crosspost] Getting a list of flairs`);
       await this.page.waitForSelector(`div[aria-label="flair_picker"] span`, {
         timeout: 15000,
-        visible: true,
       });
       const flairElements = await this.page.$$(
         `div[aria-label="flair_picker"] span`
@@ -425,28 +382,18 @@ export class RedditCrossposterBot {
           return await this.page.evaluate((el) => el.textContent, flairElement);
         })
       );
-      console.log(
-        `[Cluster ${process.env.pm_id}][${
-          this.account.username
-        }][Crosspost] Flair list: [${flairList.join("|")}]`
-      );
+      await logInfo(`[Crosspost] Flair list: [${flairList.join("|")}]`);
 
       // Pick a best flair
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Choosing best flair`
-      );
+      await logInfo(`[Crosspost] Choosing best flair`);
       const bestFlair = await this.chatGptClient.chooseBestFlair({
         postTitle: postTitle,
         flairList: flairList,
       });
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Best flair: ${bestFlair}`
-      );
+      await logInfo(`[Crosspost] Best flair: ${bestFlair}`);
 
       // Click best flair
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Selecting flair: ${bestFlair}`
-      );
+      await logInfo(`[Crosspost] Selecting flair: ${bestFlair}`);
       for (const flairElement of flairElements) {
         const currentText = await this.page.evaluate(
           (el) => el.textContent,
@@ -460,12 +407,9 @@ export class RedditCrossposterBot {
         }
       }
 
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Clicking Apply`
-      );
+      await logInfo(`[Crosspost] Clicking Apply`);
       await this.cursor.move(
         (await this.page.waitForXPath(`//button[text() = "Apply"]`, {
-          visible: true,
           timeout: 15000,
         })) as ElementHandle<Element>,
         { paddingPercentage: 45 }
@@ -475,14 +419,11 @@ export class RedditCrossposterBot {
     }
 
     // Click post
-    console.log(
-      `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Clicking Post`
-    );
+    await logInfo(`[Crosspost] Clicking Post`);
     await this.cursor.move(
       (await this.page.waitForXPath(
         `//button[text() = "Post" and not(@disabled) and @role='button']`,
         {
-          visible: true,
           timeout: 5000,
         }
       )) as ElementHandle<Element>,
@@ -491,96 +432,38 @@ export class RedditCrossposterBot {
     await Promise.all([this.cursor.click(), this.page.waitForNavigation()]);
 
     // Saving history
-    console.log(
-      `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Saving history`
-    );
+    await logInfo(`[Crosspost] Saving history`);
     await this.historyDB.add({
       action: HistoryAction.CROSS_POST,
       author: this.account,
       postId: postId,
       targetSubreddit: crosspostToSubreddit.name,
     });
+
+    // Delay for a while after post
+    await logInfo(`[Crosspost] Delay for a while after crosspost`);
     await delay(randint(5000, 15000));
 
     // Switching back page to origin
-    console.log(
-      `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Switching back to first tab`
-    );
+    await logInfo(`[Crosspost] Switching back to first tab`);
     this.page = (await browser.pages())[1];
     await this.page.bringToFront();
     // Re-create cursor
+    await logInfo(`[Crosspost] Re-creating the cursor`);
     this.cursor = createCursor(this.page, await getRandomPagePoint(this.page));
 
-    if (!this.account.emailVerified) {
-      try {
-        console.log(
-          `[Cluster ${process.env.pm_id}][Crosspost] Clicking for 'Got it' button 1`
-        );
-        const gotIt1 = await this.page.waitForXPath(
-          `//button[text() = 'Got it']`,
-          {
-            timeout: 3000,
-            visible: true,
-          }
-        );
-        await this.cursor.move(gotIt1 as ElementHandle<Element>, {
-          paddingPercentage: 45,
-        });
-        await this.cursor.click();
+    await logInfo(`[Crosspost] Closing the postbox`);
+    await this._closePostBox();
 
-        console.log(
-          `[Cluster ${process.env.pm_id}][Crosspost] Clicking for 'Got it' button 2`
-        );
-        const gotIt2 = await this.page.waitForXPath(
-          `//button[text() = 'Got it']`,
-          {
-            timeout: 15000,
-            visible: true,
-          }
-        );
-        await delay(randint(2000, 3000));
-        await this.cursor.move(gotIt2 as ElementHandle<Element>, {
-          paddingPercentage: 45,
-        });
-        await this.cursor.click();
-      } catch {}
-
-      // Close the box
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Closing the post box`
-      );
-      await this.cursor.move(
-        (await this.page.waitForXPath(`//span[text()="Close"]`, {
-          visible: true,
-          timeout: 15000,
-        })) as ElementHandle<Element>
-      );
-      await this.cursor.click();
-
-      // Wait for postBox disappeared
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Waiting for post box to be disappeared`
-      );
-      await this.page.waitForSelector(`#overlayScrollContainer`, {
-        hidden: true,
-        timeout: 15000,
-      });
-
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Crosspost] Scrolling for a while`
-      );
-      await this._simulateScroll(randint(5, 10));
-    }
+    await logInfo(`[Crosspost] Scrolling for a while after crosspost`);
+    await this._simulateScroll(randint(3, 5));
   }
 
   async turnOnNSFW(): Promise<void> {
     try {
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Turn on NSFW] Go to settings page`
-      );
+      await logInfo("[Turn on NSFW] Go to Settings page");
       await this.cursor.move(
         await this.page.waitForSelector(`#USER_DROPDOWN_ID`, {
-          visible: true,
           timeout: 5000,
         }),
         {
@@ -593,7 +476,6 @@ export class RedditCrossposterBot {
       await this.cursor.move(
         (await this.page.waitForXPath(`//span[text()="User Settings"]`, {
           timeout: 5000,
-          visible: true,
         })) as ElementHandle<Element>,
         {
           paddingPercentage: 45,
@@ -602,12 +484,9 @@ export class RedditCrossposterBot {
       await Promise.all([this.cursor.click(), this.page.waitForNavigation()]);
       await delay(randint(1000, 2000));
 
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Turn on NSFW] Clicking Profile tab`
-      );
+      await logInfo("[Turn on NSFW] Clicking Profile tab");
       await this.cursor.move(
         (await this.page.waitForXPath(`//a[text()="Profile"]`, {
-          visible: true,
           timeout: 15000,
         })) as ElementHandle<Element>,
         {
@@ -617,11 +496,8 @@ export class RedditCrossposterBot {
       await this.cursor.click();
       await delay(randint(1000, 2000));
 
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Turn on NSFW] Enabling Profile/NSFW`
-      );
+      await logInfo("[Turn on NSFW] Enabling Profile/NSFW");
       const nsfwLabel = await this.page.waitForXPath('//h3[text()="NSFW"]/..', {
-        visible: true,
         timeout: 15000,
       });
       const nsfwLabelForValue = await this.page.evaluate(
@@ -632,7 +508,7 @@ export class RedditCrossposterBot {
       // Check if it's already on
       const nsfwButton = await this.page.waitForXPath(
         `//button[@id='${nsfwLabelForValue}']`,
-        { visible: true, timeout: 15000 }
+        { timeout: 15000 }
       );
       const nsfwTurnedOn = await this.page.evaluate(
         (el) => (el as any).getAttribute("aria-checked"),
@@ -647,12 +523,10 @@ export class RedditCrossposterBot {
         await delay(randint(2000, 5000));
       }
 
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Turn on NSFW] Clicking Feed Settings tab`
-      );
+      await logInfo("[Turn on NSFW] Clicking Feed Settings tab");
       const feedSettingsButton = await this.page.waitForXPath(
         "//a[text()='Feed Settings']",
-        { visible: true, timeout: 15000 }
+        { timeout: 15000 }
       );
       await this.cursor.move(feedSettingsButton as ElementHandle<Element>, {
         paddingPercentage: 45,
@@ -660,12 +534,10 @@ export class RedditCrossposterBot {
       await this.cursor.click();
       await delay(randint(1000, 2000));
 
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Turn on NSFW] Enabling Feed Settings/Adult Content`
-      );
+      await logInfo("[Turn on NSFW] Enabling Feed Settings/Adult Content");
       const adultContentLabel = await this.page.waitForXPath(
         '//h3[text()="Adult content"]/..',
-        { visible: true, timeout: 15000 }
+        { timeout: 15000 }
       );
       const adultContentLabelForValue = await this.page.evaluate(
         (el) => (el as any).getAttribute("for"),
@@ -674,7 +546,7 @@ export class RedditCrossposterBot {
       // Check if it's already on
       const adultContentButton = await this.page.waitForXPath(
         `//button[@id='${adultContentLabelForValue}']`,
-        { visible: true, timeout: 15000 }
+        { timeout: 15000 }
       );
       const adultContentTurnedOn = await this.page.evaluate(
         (el) => (el as any).getAttribute("aria-checked"),
@@ -687,32 +559,21 @@ export class RedditCrossposterBot {
         });
         await delay(randint(2000, 5000));
       }
-
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Turn on NSFW] Successfully`
-      );
     } catch (err) {
-      console.error(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Turn on NSFW] Failed, ` +
-          err
-      );
+      await logError("[Turn on NSFW] Failed, " + err);
     }
   }
 
   private async visitSubreddit(subreddit: ISubredditEntity) {
     try {
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Visit Subreddit] ${subreddit.name}`
-      );
+      await logInfo(`[Visit Subreddit] ${subreddit.name}`);
 
       // Checking if there's a filter on search bar
       const removeFilterBtn = await this.page.$(
         `button[aria-label="Remove community search filter"]`
       );
       if (removeFilterBtn) {
-        console.log(
-          `[Cluster ${process.env.pm_id}][${this.account.username}][Visit Subreddit] Remove filter on search bar`
-        );
+        await logInfo(`[Visit Subreddit] Remove filter on search bar`);
         await this.cursor.move(removeFilterBtn, {
           paddingPercentage: 45,
         });
@@ -721,9 +582,7 @@ export class RedditCrossposterBot {
       }
 
       // Click on search bar
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Visit Subreddit] Clicking on search bar`
-      );
+      await logInfo(`[Visit Subreddit] Clicking on search bar`);
       await this.cursor.move(
         await this.page.waitForSelector(`input#header-search-bar`, {
           visible: true,
@@ -739,8 +598,8 @@ export class RedditCrossposterBot {
           `#SearchDropdownContent a[href*="${subreddit.name}" i]`,
           { visible: true, timeout: 5000 }
         );
-        console.log(
-          `[Cluster ${process.env.pm_id}][${this.account.username}][Visit Subreddit] Found target subreddit on search bar, clicking`
+        await logInfo(
+          `[Visit Subreddit] Found target subreddit on search bar, clicking`
         );
         await this.cursor.move(subredditLink, {
           paddingPercentage: 45,
@@ -756,9 +615,7 @@ export class RedditCrossposterBot {
       } catch {}
 
       // Type subreddit name
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Visit Subreddit] Typing subreddit`
-      );
+      await logInfo(`[Visit Subreddit] Typing subreddit`);
       await this._type(subreddit.name);
       await delay(randint(500, 1000));
 
@@ -768,9 +625,7 @@ export class RedditCrossposterBot {
           visible: true,
           timeout: 5000,
         });
-        console.log(
-          `[Cluster ${process.env.pm_id}][${this.account.username}][Visit Subreddit] Clicking Expand`
-        );
+        await logInfo(`[Visit Subreddit] Clicking Expand`);
         await this.cursor.move(expandBtn as ElementHandle<Element>, {
           paddingPercentage: 45,
         });
@@ -779,9 +634,7 @@ export class RedditCrossposterBot {
       await delay(randint(500, 1000));
 
       // Click on Subreddit
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Visit Subreddit] Clicking on Subreddit`
-      );
+      await logInfo(`[Visit Subreddit] Clicking on Subreddit`);
       await this.cursor.move(
         await this.page.waitForSelector(
           `#SearchDropdownContent a[aria-label='${subreddit.name}' i]`,
@@ -790,9 +643,7 @@ export class RedditCrossposterBot {
       );
 
       // Waiting for navigation
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Visit Subreddit] Waiting for navigation`
-      );
+      await logInfo(`[Visit Subreddit] Waiting for navigation`);
       await Promise.all([this.cursor.click(), this.page.waitForNavigation()]);
 
       // Wait for first post to load
@@ -801,10 +652,7 @@ export class RedditCrossposterBot {
         timeout: 60000,
       });
     } catch (err) {
-      console.error(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Visit Subreddit] Failed, trying direct link - ` +
-          err
-      );
+      console.error(`[Visit Subreddit] Failed, trying direct link - ` + err);
       await this.page.goto(`https://reddit.com/${subreddit.name}/`);
       // Wait for first post to load
       await this.page.waitForSelector(`.Post:not(.promotedlink) h3`, {
@@ -815,154 +663,254 @@ export class RedditCrossposterBot {
   }
 
   async readRandomPosts(numPosts: number = 1) {
-    let numReadPosts = 0;
-    await this.returnHome();
-    await delay(randint(1000, 3000));
+    let numPostRead = 0;
 
-    while (numReadPosts < numPosts) {
+    while (numPostRead < numPosts) {
       try {
-        // Scrolling for a while
-        console.log(
-          `[Cluster ${process.env.pm_id}][${this.account.username}][Read Random Posts] Scrolling until find a post`
+        await logInfo(
+          `[Read Random Posts] Attempting ${numPostRead + 1}/${numPosts}`
         );
-        await this._simulateScroll(randint(5, 10));
 
-        // Scroll until find a post to read
-        const findPostTimeoutMs = 120000;
-        const findPostStartTime = Date.now();
-        while (true) {
-          const allPostTitles = (await this.page.$$(
-            `.Post:not(.promotedlink) h3`
-          )) as ElementHandle<Node>[];
-          const tempPost = (await findAsync(
-            allPostTitles,
-            async (el) => await el.isIntersectingViewport()
-          )) as ElementHandle<Node>;
-          allPostTitles.splice(allPostTitles.indexOf(tempPost), 1);
-          const currentPost = (await findAsync(
-            allPostTitles,
-            async (el) => await el.isIntersectingViewport()
-          )) as ElementHandle<Node>;
-          if (currentPost) {
-            await delay(randint(1000, 2000));
-            console.log(
-              `[Cluster ${process.env.pm_id}][${this.account.username}][Read Random Posts] Clicking on a post`
-            );
-            await delay(randint(1000, 2000));
-            await this.cursor.move(currentPost as ElementHandle<Element>, {
-              paddingPercentage: 45,
-            });
-            await this.cursor.click();
-
-            // Wait for overlay to be appeared
-            console.log(
-              `[Cluster ${process.env.pm_id}][${this.account.username}][Read Random Posts] Waiting for post box`
-            );
-            const postBox = await this.page.waitForSelector(
-              `#overlayScrollContainer`,
-              {
-                visible: true,
-                timeout: 60000,
-              }
-            );
-
-            // Simulate reading
-            console.log(
-              `[Cluster ${process.env.pm_id}][${this.account.username}][Read Random Posts] Delay to simulate reading`
-            );
-            await delay(randint(5000, 15000));
-
-            // Scroll for a while
-            console.log(
-              `[Cluster ${process.env.pm_id}][${this.account.username}][Read Random Posts] Scrolling post box`
-            );
-            await this._simulateScroll(randint(3, 5), postBox);
-            await delay(randint(1000, 2000));
-
-            // Close the box
-            console.log(
-              `[Cluster ${process.env.pm_id}][${this.account.username}][Read Random Posts] Closing the post box`
-            );
-            await this.cursor.move(
-              (await this.page.waitForXPath(`//span[text()="Close"]`, {
-                visible: true,
-                timeout: 15000,
-              })) as ElementHandle<Element>
-            );
-            await this.cursor.click();
-
-            // Wait for postBox disappeared
-            console.log(
-              `[Cluster ${process.env.pm_id}][${this.account.username}][Read Random Posts] Waiting for post box to be disappeared`
-            );
-            await this.page.waitForSelector(`#overlayScrollContainer`, {
-              hidden: true,
-              timeout: 15000,
-            });
-            await delay(randint(1000, 2000));
-            break;
-          } else {
-            const now = Date.now();
-            if (now - findPostStartTime >= findPostTimeoutMs) {
-              throw new Error(
-                `[Cluster ${process.env.pm_id}][${this.account.username}][Read Random Posts] Failed, find post to click timed out`
-              );
-            }
-            console.log(
-              `[Cluster ${process.env.pm_id}][${this.account.username}][Read Random Posts] Didn't find a post yet, scroll for a little more`
-            );
-            await this._simulateScroll(randint(1, 3));
-          }
-        }
-
-        console.log(
-          `[Cluster ${process.env.pm_id}][${this.account.username}][Read Random Posts] Finished reading a post, scroll for a little more`
+        // Return home in case it's stuck
+        await logInfo(
+          "[Read Random Posts] Returning home in case it's stuck somewhere"
         );
-        await this._simulateScroll(randint(10, 15));
+        await this._returnHome();
+        await delay(randint(1000, 3000));
+
+        // Scroll and Click a random post
+        await logInfo("[Read Random Posts] Scrolling and click a random post");
+        const postBox = await this._scrollAndClickARandomPost();
+
+        // Scroll for a while
+        await logInfo("[Read Random Posts] Scrolling post box content");
+        await this._simulateScroll(randint(3, 8), postBox);
+        await delay(randint(1000, 2000));
+
+        // Close the post box
+        await logInfo("[Read Random Posts] Closing the post box");
+        await this._closePostBox();
+
+        await logInfo(
+          "[Read Random Posts] Scrolling for a little more after read a post"
+        );
+        await this._simulateScroll(randint(3, 8));
       } catch (err) {
-        console.error(
-          `[Cluster ${process.env.pm_id}][${this.account.username}][Read Random Posts] Failed, ` +
-            err
-        );
-      } finally {
-        ++numReadPosts;
+        await logError("[Read Random Posts] Failed, " + err);
       }
+      ++numPostRead;
     }
   }
 
-  private async returnHome() {
+  private async _scrollAndClickARandomPost(): Promise<ElementHandle<Element>> {
+    // Waiting for posts to show up
+    await logInfo("[Scroll & click random post] Waiting for posts to show up");
     try {
-      if (this.page.url() != "https://www.reddit.com/") {
-        console.log(
-          `[Cluster ${process.env.pm_id}][${this.account.username}][Return Home] Clicking on Logo`
+      await this.page.waitForSelector(`.Post:not(.promotedlink) h3`, {
+        timeout: 60000,
+      });
+    } catch {
+      throw new Error(`[Scroll & click random post] No posts found`);
+    }
+
+    // Scrolling for a while
+    await logInfo("[Scroll & click random post] Scrolling for a while");
+    await this._simulateScroll(randint(3, 10));
+
+    // Select a random post
+
+    let firstIntersectingTitle: ElementHandle<Element>;
+    let secondIntersectingTitle: ElementHandle<Element>;
+    let selectedPostTitle: ElementHandle<Element>;
+    const MAX_SELECT_POST_RETRIES = 10;
+    let numSelectPost = 0;
+    while (numSelectPost < MAX_SELECT_POST_RETRIES) {
+      try {
+        await logInfo(
+          `[Scroll & click random post] Selecting a random visible post (${
+            numSelectPost + 1
+          }/${MAX_SELECT_POST_RETRIES} max attempts)`
         );
+
+        // Getting post list
+        await logInfo("[Scroll & click random post] Getting post list");
+        const allPostTitles = await this.page.$$(`.Post:not(.promotedlink) h3`);
+        if (allPostTitles.length == 0) {
+          await logError("[Scroll and Click a random post] No posts found");
+          return;
+        }
+        await logInfo(
+          `[Scroll & click random post] Total: ${allPostTitles.length} post(s)`
+        );
+
+        // Get a post that is intersecting the viewport
+        await logInfo(`[Scroll & click random post] Getting a visible post`);
+        for (const postTitle of allPostTitles) {
+          if (await postTitle.isIntersectingViewport()) {
+            if (!firstIntersectingTitle) {
+              firstIntersectingTitle = postTitle;
+            } else if (firstIntersectingTitle) {
+              secondIntersectingTitle = postTitle;
+              break;
+            }
+          }
+        }
+
+        if (!firstIntersectingTitle) {
+          throw new Error(
+            `[Scroll & click random post] Could not find a visible post`
+          );
+        }
+        selectedPostTitle = secondIntersectingTitle;
+
+        if (!secondIntersectingTitle) {
+          await logInfo(
+            "[Scroll & click random post] Cannot find second intersecting title, choose first intersecting title"
+          );
+          selectedPostTitle = firstIntersectingTitle;
+        }
+        break;
+      } catch (err) {
+        await logError(err as string);
+      }
+      ++numSelectPost;
+      await logInfo(
+        "[Scroll & click random post] Have not found visible post yet, scrolling for a little more"
+      );
+      await this._simulateScroll(randint(1, 3));
+      await delay(randint(1000, 2000));
+    }
+
+    if (!selectedPostTitle) {
+      throw new Error(
+        `[Scroll & click random post] Cannot find a post that is intersecting viewport, maximum retries exceeded (MAXIMUM: ${MAX_SELECT_POST_RETRIES})`
+      );
+    }
+
+    await logInfo(`[Scroll & click random post] Scrolling to selected post`);
+    await delay(randint(500, 1000));
+    await this._scrollToElement(selectedPostTitle);
+
+    // Delay to simulate reading
+    await logInfo(
+      `[Scroll & click random post] Delay to simulate reading post preview`
+    );
+    await delay(randint(1000, 3000));
+
+    // Click on selected post
+    await logInfo(`[Scroll & click random post] Clicking on selected post`);
+    await this.cursor.move(selectedPostTitle, {
+      paddingPercentage: 45,
+    });
+    await this.cursor.click();
+
+    // Wait for post overlay to show up
+    await logInfo(
+      `[Scroll & click random post] Waiting for post box to show up`
+    );
+    const postBox = await this.page.waitForSelector(`#overlayScrollContainer`, {
+      visible: true,
+      timeout: 60000,
+    });
+
+    // Wait for post title to show up
+    await logInfo(
+      `[Scroll & click random post] Waiting for post title to show up`
+    );
+    await this.page.waitForSelector(`div[data-test-id="post-content"] h1`, {
+      timeout: 60000,
+    });
+
+    // Simulate reading
+    await logInfo(`[Scroll & click random post] Delay to simulate reading`);
+    await delay(randint(5000, 15000));
+
+    return postBox;
+  }
+
+  private async _closePostBox() {
+    if (!this.account.emailVerified) {
+      try {
+        await logInfo("[Close Post Box] Checking if it has email prompt");
+        const gotIt1 = await this.page.waitForXPath(
+          `//button[text() = 'Got it']`,
+          {
+            timeout: 1000,
+            visible: true,
+          }
+        );
+        await logInfo("[Close Post Box] Clicking 'Got it' 1st time");
+        await this.cursor.move(gotIt1 as ElementHandle<Element>, {
+          paddingPercentage: 45,
+        });
+        await this.cursor.click();
+
+        await logInfo("[Close Post Box] Clicking 'Got it' 2nd time");
+        const gotIt2 = await this.page.waitForXPath(
+          `//button[text() = 'Got it']`,
+          {
+            timeout: 15000,
+            visible: true,
+          }
+        );
+        await delay(randint(2000, 3000));
+        await this.cursor.move(gotIt2 as ElementHandle<Element>, {
+          paddingPercentage: 45,
+        });
+        await this.cursor.click();
+      } catch {}
+    }
+
+    // Close the box
+    await logInfo("[Close Post Box] Clicking 'Close'");
+    await this.cursor.move(
+      (await this.page.waitForXPath(`//span[text()="Close"]`, {
+        timeout: 15000,
+      })) as ElementHandle<Element>
+    );
+    await this.cursor.click();
+
+    // Wait for postBox disappeared
+    await logInfo("[Close Post Box] Waiting for post box to be disappeared");
+    await this.page.waitForSelector(`#overlayScrollContainer`, {
+      hidden: true,
+      timeout: 15000,
+    });
+    await delay(randint(1000, 2000));
+  }
+
+  private async _returnHome() {
+    try {
+      await logInfo("[Return Home] Starting");
+      if (this.page.url() != "https://www.reddit.com/") {
+        await logInfo(`[Return Home] Clicking on Logo`);
         const logo = await this.page.waitForSelector(`a[aria-label="Home"]`, {
           timeout: 3000,
-          visible: true,
         });
         await this.cursor.move(logo, { paddingPercentage: 45 });
+
+        await logInfo(`[Return Home] Waiting for navigation`);
         await Promise.all([this.page.waitForNavigation(), this.cursor.click()]);
       }
     } catch (err) {
-      console.error(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Return Home] Failed -> Trying direct link, `,
-        +err
-      );
+      await logError(`[Return Home] Failed, ` + err);
+      await logInfo(`[Return Home] Trying direct link`);
       await this.page.goto("https://www.reddit.com/");
     }
+
+    await logInfo(`[Return Home] Waiting for posts to show up`);
+    await this.page.waitForSelector(`.Post h3`, {
+      timeout: 60000,
+    });
   }
 
   async isLoggedIn(): Promise<boolean> {
     const loginBtn = (await this.page.$x(`//a[text()="Log In"]`))?.[0];
     if (loginBtn) {
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Is Logged In] No`
-      );
+      await logInfo(`[Is Logged In] No`);
       return false;
     } else {
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Is Logged In] Yes`
-      );
+      await logInfo(`[Is Logged In] Yes`);
       return true;
     }
   }
@@ -972,18 +920,14 @@ export class RedditCrossposterBot {
 
     if (loginBtn) {
       // Click login button
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Login] Click login button on homepage`
-      );
+      await logInfo(`[Login] Click login button on homepage`);
       await this.cursor.move(loginBtn as ElementHandle<Element>, {
         paddingPercentage: 45,
       });
       await this.cursor.click();
 
       // Wait for login frame to load
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Login] Waiting for login frame to load`
-      );
+      await logInfo(`[Login] Waiting for login frame to load`);
       const loginFrameHandle = await this.page.waitForSelector(
         'iframe[src^="https://www.reddit.com/login"]',
         { timeout: 60000 }
@@ -992,9 +936,7 @@ export class RedditCrossposterBot {
       await delay(randint(3000, 6000));
 
       // Type username
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Login] Typing username`
-      );
+      await logInfo(`[Login] Typing username`);
       const usernameInput = await loginFrame.waitForSelector(
         `input#loginUsername`
       );
@@ -1006,9 +948,7 @@ export class RedditCrossposterBot {
       await delay(randint(500, 1500));
 
       // Type password
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Login] Typing password`
-      );
+      await logInfo(`[Login] Typing password`);
       const passwordInput = await loginFrame.waitForSelector(
         `input#loginPassword`
       );
@@ -1020,9 +960,7 @@ export class RedditCrossposterBot {
       await delay(randint(500, 1500));
 
       // Click Sign in
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Login] Clicking Login`
-      );
+      await logInfo(`[Login] Clicking Login`);
       await this.cursor.move(
         (await loginFrame.waitForXPath(`//button[contains(text(), "Log In")]`, {
           timeout: 15000,
@@ -1038,36 +976,26 @@ export class RedditCrossposterBot {
       this.page.off("response", this._onLoginResponse.bind(this)); // Off login response
       await this.page.waitForNavigation();
     } else {
-      throw new Error(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Login] Didn't find login button`
-      );
+      throw new Error(`[Login] Didn't find login button`);
     }
   }
 
   private async _checkLoginResult() {
-    console.log(
-      `[Cluster ${process.env.pm_id}][${this.account.username}][Login] Waiting for login result`
-    );
+    await logInfo(`[Login] Waiting for login result`);
     const startTime = Date.now();
     const timeoutMs = 120000;
     while (!this.loginResult) {
       const now = Date.now();
       if (now - startTime >= timeoutMs) {
-        throw new Error(
-          `[BOT][${this.account.username}][Login] Failed, timed out`
-        );
+        throw new Error(`[BOT][Login] Failed, timed out`);
       }
       await delay(100);
     }
 
     if (this.loginResult?.message) {
-      throw new Error(
-        `[BOT][${this.account.username}][Login] Failed, ${this.loginResult.message}`
-      );
+      throw new Error(`[BOT][Login] Failed, ${this.loginResult.message}`);
     } else {
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Login] Successfully`
-      );
+      await logInfo(`[Login] Successfully`);
     }
   }
 
@@ -1227,9 +1155,7 @@ export class RedditCrossposterBot {
   }
 
   private async solveCaptcha() {
-    console.log(
-      `[Cluster ${process.env.pm_id}][${this.account.username}][Solve Captcha] Running`
-    );
+    await logInfo(`[Solve Captcha] Running`);
     let captcha: any;
     try {
       captcha = await this.page.waitForSelector(
@@ -1256,16 +1182,12 @@ export class RedditCrossposterBot {
 
         const now = Date.now();
         if (now - startTime >= this.captchaTimeoutMs) {
-          throw new Error(
-            `[Cluster ${process.env.pm_id}][${this.account.username}][Solve Captcha] Timed out`
-          );
+          throw new Error(`[Solve Captcha] Timed out`);
         }
         await delay(this.captchaPollingIntervalMs);
       } while (true);
     } else {
-      console.log(
-        `[Cluster ${process.env.pm_id}][${this.account.username}][Solve Captcha] No action needed`
-      );
+      await logInfo(`[Solve Captcha] No action needed`);
     }
   }
 

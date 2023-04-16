@@ -1,5 +1,8 @@
 import fs from "fs";
 import { request } from "undici";
+import { LOG_PREFIX, MAX_LOG_LENGTH } from "../../loaders/constants";
+import mongoose from "mongoose";
+import { ClusterDB } from "../cluster/cluster.db";
 
 export function randint(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -48,4 +51,31 @@ export async function findAsync(arr: any[], asyncCallback) {
   const results = await Promise.all(promises);
   const index = results.findIndex((result) => result);
   return arr[index];
+}
+
+export const clusterDB = new ClusterDB();
+
+export async function logInfo(message: string) {
+  console.log(
+    `${LOG_PREFIX}${
+      message.length > MAX_LOG_LENGTH
+        ? message.substring(0, MAX_LOG_LENGTH) + "..."
+        : message
+    }`
+  );
+  if (mongoose.connection.readyState == 1) {
+    await clusterDB.updateLog(message);
+  }
+}
+
+export async function logError(message: string) {
+  console.error(`${LOG_PREFIX}${message}`);
+  if (mongoose.connection.readyState == 1) {
+    await clusterDB.updateLog(message);
+  }
+}
+
+export async function getIp(): Promise<string> {
+  const { body } = await request("https://api.ipify.org/?format=json");
+  return (await body.json()).ip;
 }

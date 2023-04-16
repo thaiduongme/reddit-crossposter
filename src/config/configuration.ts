@@ -28,6 +28,7 @@ const REQUIRED_ENV_VARS = [
   "REDDIT_CROSSPOSTER_MINIMUM_KARMA",
   "REDDIT_CROSSPOSTER_CROSSPOST_FREQUENCY",
   "REDDIT_CROSSPOSTER_SLEEP_MS",
+  "NUM_ACCOUNTS_PER_CLUSTER",
 ];
 
 interface Configuration {
@@ -75,6 +76,9 @@ interface Configuration {
     frequency: FrequencyByStage[];
     sleepMs: number;
   };
+  reddit: {
+    numAccountsPerCluster: number;
+  };
 }
 
 export const config: Configuration = {
@@ -121,6 +125,9 @@ export const config: Configuration = {
     minimumKarma: +process.env.REDDIT_CROSSPOSTER_MINIMUM_KARMA,
     frequency: JSON.parse(process.env.REDDIT_CROSSPOSTER_CROSSPOST_FREQUENCY),
     sleepMs: +process.env.REDDIT_CROSSPOSTER_SLEEP_MS,
+  },
+  reddit: {
+    numAccountsPerCluster: +process.env.NUM_ACCOUNTS_PER_CLUSTER,
   },
 };
 

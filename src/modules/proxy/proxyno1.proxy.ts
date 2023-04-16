@@ -4,6 +4,7 @@ import delay from "delay";
 import axios from "axios";
 import HttpsProxyAgent from "https-proxy-agent/dist/agent";
 import cluster from "node:cluster";
+import { logInfo } from "../utils/other.utils";
 
 export class Proxyno1RotatingProxy implements IRotatingProxy {
   constructor(
@@ -27,7 +28,7 @@ export class Proxyno1RotatingProxy implements IRotatingProxy {
 
     if (apiKeyStatus.data.status != 0) {
       throw new Error(
-        `[PROXY][Proxyno1][${apiKey}] Can't get proxy info, ${apiKeyStatus.data.message}`
+        `[Proxyno1][${apiKey}] Can't get proxy info, ${apiKeyStatus.data.message}`
       );
     }
     return new Proxyno1RotatingProxy(
@@ -52,9 +53,7 @@ export class Proxyno1RotatingProxy implements IRotatingProxy {
           }),
         })
       ).data;
-      console.log(
-        `[Cluster ${process.env.pm_id}][PROXY][ProxyNo1] Current IP: ${ipResponse.ip}`
-      );
+      await logInfo(`[ProxyNo1] Current IP: ${ipResponse.ip}`);
     } catch {}
 
     return {
@@ -66,7 +65,7 @@ export class Proxyno1RotatingProxy implements IRotatingProxy {
   }
 
   async changeIP(): Promise<void> {
-    console.log(`[Cluster ${process.env.pm_id}][PROXY][Proxyno1] Changing IP`);
+    await logInfo(`[Proxyno1] Changing IP`);
     let changeIPResponse: any;
 
     const startTime = Date.now();
@@ -80,10 +79,10 @@ export class Proxyno1RotatingProxy implements IRotatingProxy {
       const waitingPattern = /\s(\d+)\s/g;
       const waitingResult = changeIPResponse.message.match(waitingPattern);
       if (waitingResult) {
-        console.log(
-          `[Cluster ${process.env.pm_id}][PROXY][Proxyno1][${
-            this.apiKey
-          }] Waiting ${parseInt(waitingResult[0])}(s) to change IP`
+        await logInfo(
+          `[Proxyno1][${this.apiKey}] Waiting ${parseInt(
+            waitingResult[0]
+          )}(s) to change IP`
         );
         await delay(parseInt(waitingResult[0]) * 1000);
         await delay(5000);
@@ -110,7 +109,7 @@ export class Proxyno1RotatingProxy implements IRotatingProxy {
           const now = Date.now();
           if (now - startTime >= proxyCheckerTimeoutMs) {
             throw new Error(
-              `[PROXY][Proxyno1][${this.apiKey}] Proxy Checker timed out, exceeded ${proxyCheckerTimeoutMs}ms`
+              `[Proxyno1][${this.apiKey}] Proxy Checker timed out, exceeded ${proxyCheckerTimeoutMs}ms`
             );
           }
           await delay(proxyPollingIntervalMs);
@@ -120,7 +119,7 @@ export class Proxyno1RotatingProxy implements IRotatingProxy {
       const now = Date.now();
       if (now - startTime >= this.retryTimeoutMs) {
         throw new Error(
-          `[PROXY][Proxyno1][${this.apiKey}] Can't change IP, timed out`
+          `[Proxyno1][${this.apiKey}] Can't change IP, timed out`
         );
       }
       await delay(this.retryPollingIntervalMs);

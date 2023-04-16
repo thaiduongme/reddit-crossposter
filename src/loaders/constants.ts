@@ -21,3 +21,9 @@ export const FARM_STAGE_ORDER = [
   FarmStage.DAY_3,
   FarmStage.TRUST,
 ];
+
+export const MAX_LOG_LENGTH = 255;
+
+export const LOG_PREFIX = process.env.pm_id
+  ? `[Cluster ${process.env.pm_id}]`
+  : "";

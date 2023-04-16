@@ -5,17 +5,14 @@ import GoLogin from "./gologin/gologin";
 import { CaptchaSolvingProvider, GologinOS } from "../../loaders/enums";
 import { Browser, Page } from "puppeteer";
 import axios from "axios";
-import os from "os";
 import * as AWS from "aws-sdk";
 import { config } from "../../config/configuration";
 import { BROWSER_EXTRA_PARAMS } from "../../loaders/constants";
 import * as path from "node:path";
 import delay from "delay";
-import { randomString } from "../utils/other.utils";
-import https from "https";
+import { logInfo, randomString } from "../utils/other.utils";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { Proxy } from "../proxy/interfaces/proxy.interface";
-import cluster from "node:cluster";
 
 export class GologinBrowser implements IBrowser {
   private isLoadedCaptchaSolver: boolean;
@@ -31,9 +28,7 @@ export class GologinBrowser implements IBrowser {
       options.captchaSolver &&
       options.captchaSolver.provider === CaptchaSolvingProvider.NopeCHA
     ) {
-      console.log(
-        `[Cluster ${process.env.pm_id}][GOLOGIN][Browser] Validating NopeCHA API key`
-      );
+      await logInfo(`[GoLogin] Validating NopeCHA API key`);
       await this.validateNopechaApiKey(options.captchaSolver.apiKey);
       const nopechaPath = path.join(
         __dirname,
@@ -171,8 +166,11 @@ export class GologinBrowser implements IBrowser {
   }
 
   async close(): Promise<void> {
+    await logInfo(`[GoLogin] Closing Browser using puppeteer`);
     await this.browser.close();
+    await logInfo(`[GoLogin] Closing Browser by killing port`);
     await this.gologin.stopBrowser();
+    await logInfo(`[GoLogin] Stop browser & commit profile`);
     await this.gologin.stop();
   }
 
@@ -245,6 +243,32 @@ export class GologinBrowser implements IBrowser {
     const pollingIntervalMs = 5000;
     while (true) {
       try {
+        const headerOptions: any = {
+          headers: {
+            authority: "api.gologin.com",
+            accept: "*/*",
+            "accept-language": "en-US,en;q=0.9",
+            "content-type": "application/json",
+            origin: "https://app.gologin.com",
+            referer: "https://app.gologin.com/",
+            "sec-ch-ua": `"Not_A Brand";v="99", "Google Chrome";v="109", "Chromium";v="109"`,
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": `"Windows"`,
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-site",
+            "user-agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36",
+          },
+        };
+        if (proxy) {
+          headerOptions.httpsAgent = new HttpsProxyAgent({
+            host: proxy.host,
+            port: proxy.port,
+            auth: `${proxy.username}:${proxy.password}`,
+          });
+        }
+
         const password = randomString(8);
         const signupResponseData = (
           await axios.post(
@@ -262,75 +286,24 @@ export class GologinBrowser implements IBrowser {
               fontsHash: "aacb32b9ec6db007",
               canvasHash: "875325766",
             },
-            {
-              httpsAgent: proxy
-                ? {
-                    httpsAgent: new HttpsProxyAgent({
-                      host: proxy.host,
-                      port: proxy.port,
-                      auth: `${proxy.username}:${proxy.password}`,
-                    }),
-                  }
-                : new https.Agent({ keepAlive: true }),
-              headers: {
-                authority: "api.gologin.com",
-                accept: "*/*",
-                "accept-language": "en-US,en;q=0.9",
-                "content-type": "application/json",
-                origin: "https://app.gologin.com",
-                referer: "https://app.gologin.com/",
-                "sec-ch-ua": `"Not_A Brand";v="99", "Google Chrome";v="109", "Chromium";v="109"`,
-                "sec-ch-ua-mobile": "?0",
-                "sec-ch-ua-platform": `"Windows"`,
-                "sec-fetch-dest": "empty",
-                "sec-fetch-mode": "cors",
-                "sec-fetch-site": "same-site",
-                "user-agent":
-                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36",
-              },
-            }
+            headerOptions
           )
         ).data;
         const bearerToken = signupResponseData.token;
+        headerOptions.headers.authorization = `Bearer ${bearerToken}`;
 
         const devTokenResponseData = (
           await axios.post(
             "https://api.gologin.com/user/dev",
             { name: "hidden-boat" },
-            {
-              httpsAgent: proxy
-                ? {
-                    httpsAgent: new HttpsProxyAgent({
-                      host: proxy.host,
-                      port: proxy.port,
-                      auth: `${proxy.username}:${proxy.password}`,
-                    }),
-                  }
-                : new https.Agent({ keepAlive: true }),
-              headers: {
-                authority: "api.gologin.com",
-                accept: "*/*",
-                "accept-language": "en-US,en;q=0.9",
-                "content-type": "application/json",
-                origin: "https://app.gologin.com",
-                referer: "https://app.gologin.com/",
-                "sec-ch-ua": `"Not_A Brand";v="99", "Google Chrome";v="109", "Chromium";v="109"`,
-                "sec-ch-ua-mobile": "?0",
-                "sec-ch-ua-platform": `"Windows"`,
-                "sec-fetch-dest": "empty",
-                "sec-fetch-mode": "cors",
-                "sec-fetch-site": "same-site",
-                "user-agent":
-                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36",
-                authorization: `Bearer ${bearerToken}`,
-              },
-            }
+            headerOptions
           )
         ).data;
 
         return devTokenResponseData.dev_token;
       } catch (err) {
         console.error(`[GOLOGIN][Get new API Key] ${err}`);
+        console.error((err as any)?.response?.data);
       }
       const now = Date.now();
       if (now - startTime >= timeoutMs) {

@@ -18,12 +18,13 @@ import { PostDB } from "./modules/post/post.db";
 import { ImgurUploader } from "./modules/uploader/imgur.uploader";
 import { IAccountDB } from "./modules/account/interfaces/account-db.interface";
 import { CrosspostAccountDB } from "./modules/account/crosspost-account.db";
+import { logError, logInfo } from "./modules/utils/other.utils";
 
 async function main() {
-  console.log(`[Cluster ${process.env.pm_id}][ENV VARS] Validating`);
+  await logInfo(`[ENV VARS] Validating`);
   validateEnvironmentVars();
 
-  console.log(`[Cluster ${process.env.pm_id}][DATABASE][MongoDB] Connecting`);
+  await logInfo(`[DATABASE][MongoDB] Connecting`);
   const mongodbHelper = new MongodbHelper(
     config.mongodb.host,
     config.mongodb.database,
@@ -32,13 +33,13 @@ async function main() {
   );
   await mongodbHelper.connect();
 
-  console.log(`[Cluster ${process.env.pm_id}][CACHE][Redis] Connecting`);
+  await logInfo(`[Redis] Connecting`);
   const redisService = await RedisService.init(
     config.redis.host,
     config.redis.port
   );
 
-  console.log(`[Cluster ${process.env.pm_id}][PROXY][ProxyDB] Initializing`);
+  await logInfo(`[ProxyDB] Initializing`);
   const proxyDB = new ProxyDB(
     ProxyProvider.ProxyNo1,
     ProxyType.RESIDENTIAL,
@@ -47,36 +48,34 @@ async function main() {
     config.proxy.retryPollingIntervalMs
   );
 
-  console.log(
-    `[Cluster ${process.env.pm_id}][CACHE][Redis] Loading Gologin API key`
-  );
+  await logInfo(`[Redis] Loading GoLogin API key`);
   let gologinApiKey = await redisService.get(REDIS_GOLOGIN_API_KEY);
   if (!gologinApiKey) {
+    await logInfo(`[Redis] GoLogin API key was not found, creating a new one`);
     gologinApiKey = await redisService.set(
       REDIS_GOLOGIN_API_KEY,
       await GologinBrowser.getNewAPIKey()
     );
   }
 
-  console.log(
-    `[Cluster ${process.env.pm_id}][CrosspostAccountDB] Initializing`
-  );
+  await logInfo(`[CrosspostAccountDB] Initializing`);
   const accountDB: IAccountDB = new CrosspostAccountDB(
     config.redditCrossposter.minimumDaysOld,
     config.redditCrossposter.minimumKarma,
-    config.redditCrossposter.frequency
+    config.redditCrossposter.frequency,
+    config.reddit.numAccountsPerCluster
   );
 
-  console.log(`[Cluster ${process.env.pm_id}][SubredditDB] Initializing`);
+  await logInfo(`[SubredditDB] Initializing`);
   const subredditDB = new SubredditDB();
 
-  console.log(`[Cluster ${process.env.pm_id}][HistoryDB] Initializing`);
+  await logInfo(`[HistoryDB] Initializing`);
   const historyDB = new HistoryDB();
 
-  console.log(`[Cluster ${process.env.pm_id}][PostDB] Initializing`);
+  await logInfo(`[PostDB] Initializing`);
   const postDB = new PostDB();
 
-  console.log(`[Cluster ${process.env.pm_id}][ChatGPT] Initializing`);
+  await logInfo(`[ChatGPT] Initializing`);
   const chatGptClient = new ChatGPTClient(
     config.chatgpt.baseApiUrl,
     config.chatgpt.apiSecretKey
@@ -92,11 +91,9 @@ async function main() {
     let account: HydratedDocument<IAccountEntity>;
     let isCrossposted = false;
     try {
-      console.log(`[Cluster ${process.env.pm_id}][GOLOGIN] Validating API key`);
+      await logInfo(`[GoLogin] Validating API key`);
       if (!(await GologinBrowser.validateGologinAPIKey(gologinApiKey))) {
-        console.log(
-          `[Cluster ${process.env.pm_id}][GOLOGIN] Invalid API key, getting a new one`
-        );
+        await logInfo(`[GoLogin] Invalid API key, getting a new one`);
         await redisService.set(
           REDIS_GOLOGIN_API_KEY,
           await GologinBrowser.getNewAPIKey()
@@ -104,45 +101,38 @@ async function main() {
         gologinApiKey = await redisService.get(REDIS_GOLOGIN_API_KEY);
       }
 
-      console.log(
-        `[Cluster ${process.env.pm_id}][CrosspostAccountDB] Getting an account`
-      );
+      await logInfo(`[AccountDB] Getting an account`);
       while (!account) {
         account = await accountDB.startUsing();
         if (!account) {
-          console.log(
-            `[Cluster ${
-              process.env.pm_id
-            }][AccountDB] No accounts are ready, sleeping for ${Math.floor(
+          await logInfo(
+            `[AccountDB] No accounts are ready, sleeping for ${Math.floor(
               config.redditCrossposter.sleepMs / 1000 / 60
             )} minutes...`
           );
           await delay(config.redditCrossposter.sleepMs);
         }
       }
+      await logInfo(`[AccountDB] Using account: ${account.username}`);
 
-      console.log(
-        `[Cluster ${process.env.pm_id}][PROXY][ProxyDB] Getting a proxy`
-      );
+      await logInfo(`[ProxyDB] Getting a proxy`);
       proxy = await proxyDB.startUsing();
 
-      console.log(
-        `[Cluster ${process.env.pm_id}][Uploader][Imgur] Initializing`
-      );
+      await logInfo(`[Imgur] Initializing`);
       const imgurUploader = new ImgurUploader(config.imgur.clientId, proxy);
 
       // Initialize Browser
-      console.log(`[Cluster ${process.env.pm_id}][GOLOGIN] Initializing`);
+      await logInfo(`[GoLogin] Initializing browser`);
       gologinBrowser = await GologinBrowser.initialize({
         accessToken: gologinApiKey,
         proxy,
         profileId: account.profileId,
       });
 
-      console.log(`[Cluster ${process.env.pm_id}][GOLOGIN][Page] Initializing`);
+      await logInfo(`[GoLogin] Initializing page`);
       const page = await gologinBrowser.getPage();
 
-      console.log(`[Cluster ${process.env.pm_id}][BOT] Initializing`);
+      await logInfo(`[Bot] Initializing`);
       const redditCrossposterBot = await RedditCrossposterBot.initialize({
         page: page,
         browser: gologinBrowser,
@@ -156,40 +146,40 @@ async function main() {
         uploader: imgurUploader,
       });
 
-      await redditCrossposterBot.start();
+      await logInfo(`[Bot] Starting`);
+      // await redditCrossposterBot.start();
+      await redditCrossposterBot.crosspost();
       isCrossposted = true;
     } catch (err) {
+      await logError(err as string);
       console.error(err);
     } finally {
       if (proxy) {
+        await logInfo(`[ProxyDB] Ending using`);
         await proxyDB.endUsing();
-        console.log(
-          `[Cluster ${process.env.pm_id}][PROXY][ProxyDB] Ended using`
-        );
       }
       if (gologinBrowser && account) {
+        await logInfo(`[AccountDB] Saving profileId`);
         account.profileId = gologinBrowser.getProfileId();
         await account.save();
       }
       if (account) {
+        await logInfo(`[AccountDB] Ending using`);
         await accountDB.endUsing(isCrossposted);
-        console.log(`[Cluster ${process.env.pm_id}][AccountDB] Ended using`);
       }
       if (gologinBrowser) {
+        await logInfo(`[GOLOGIN] Closing browser`);
         await gologinBrowser.close();
-        console.log(`[Cluster ${process.env.pm_id}][GOLOGIN] Closed browser`);
       }
     }
     const executionTime = performance.stop();
-    console.log(
-      `[Cluster ${process.env.pm_id}][${account?.username}] Finished in ${executionTime.preciseWords}`
-    );
+    await logInfo(`Finished in ${executionTime.preciseWords}`);
   }
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
   if (err) {
-    console.error(`[Cluster ${process.env.pm_id}] ` + err);
+    await logError(` ` + err);
     process.exit();
   }
 });

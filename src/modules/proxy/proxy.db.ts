@@ -1,5 +1,5 @@
 import { ProxyProvider } from "../../loaders/enums";
-import { delay } from "../utils/other.utils";
+import { delay, logError } from "../utils/other.utils";
 import { ProxyEntity } from "./entities/proxy.entity";
 import {
   Proxy,
@@ -28,7 +28,7 @@ export class ProxyDB {
     });
 
     if (totalProxies == 0) {
-      throw new Error(`[PROXY][ProxyDB][${this.provider}] Proxy list is empty`);
+      throw new Error(`[ProxyDB][${this.provider}] Proxy list is empty`);
     }
 
     let rotatingProxy: IRotatingProxy;
@@ -50,7 +50,7 @@ export class ProxyDB {
           lastUsed: new Date(),
         },
         { new: true }
-      );
+      ).sort({ numUses: 1 });
       if (this.currentProxyDB) {
         try {
           // Create a Rotating proxy and break the loop
@@ -68,8 +68,8 @@ export class ProxyDB {
             }
           );
           this.currentProxyDB = null;
-          console.error(
-            `[PROXY][ProxyDB][${this.provider}] An error occurred while creating a rotating proxy, ` +
+          await logError(
+            `[ProxyDB][${this.provider}] An error occurred while creating a rotating proxy, ` +
               err
           );
         }
@@ -97,7 +97,7 @@ export class ProxyDB {
           lastUsed: new Date(),
         },
         { new: false }
-      );
+      ).sort({ numUses: 1 });
       if (this.currentProxyDB) {
         try {
           oldNumUses = this.currentProxyDB.numUses;
@@ -115,7 +115,7 @@ export class ProxyDB {
             {
               new: true,
             }
-          );
+          ).sort({ numUses: 1 });
           break;
         } catch (err) {
           this.currentProxyDB = await ProxyEntity.findOneAndUpdate(
@@ -130,11 +130,11 @@ export class ProxyDB {
             {
               new: true,
             }
-          );
+          ).sort({ numUses: 1 });
           this.currentProxyDB = null;
           rotatingProxy = null;
-          console.error(
-            `[PROXY][ProxyDB][${this.currentProxyDB.apiKey}] Failed to change IP, ` +
+          await logError(
+            `[ProxyDB][${this.currentProxyDB.apiKey}] Failed to change IP, ` +
               err
           );
         }
@@ -148,7 +148,7 @@ export class ProxyDB {
 
   async endUsing(): Promise<void> {
     if (!this.currentProxyDB) {
-      throw new Error(`[PROXY][ProxyDB] Must startUsing before endUsing`);
+      throw new Error(`[ProxyDB] Must startUsing before endUsing`);
     }
     await ProxyEntity.updateOne(
       { apiKey: this.currentProxyDB.apiKey },
@@ -163,7 +163,7 @@ export class ProxyDB {
   private async _createRotatingProxy(): Promise<IRotatingProxy> {
     if (!this.currentProxyDB) {
       throw new Error(
-        "[Proxy][ProxyDB] Failed to create Rotating Proxy, currentProxyDB doesn't exist"
+        "[ProxyDB] Failed to create Rotating Proxy, currentProxyDB doesn't exist"
       );
     }
     if (this.provider == ProxyProvider.ProxyNo1) {

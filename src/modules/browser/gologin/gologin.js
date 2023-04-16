@@ -39,6 +39,7 @@ import { get, isPortReachable } from "./utils/utils.js";
 const AWS = require("aws-sdk");
 const { config } = require("../../../config/configuration");
 import { kill } from "cross-port-killer";
+import { logError, logInfo } from "../../utils/other.utils.js";
 
 const exec = util.promisify(execNonPromise);
 
@@ -235,17 +236,15 @@ export class GoLogin {
 
     try {
       await this.s3.upload(uploadFileParams).promise();
-      console.log(
-        `[Cluster ${process.env.pm_id}][S3][${this.profile_id}] Uploaded ${(
+      await logInfo(
+        `[S3] Uploaded profile folder: ${profileId}, Size: ${(
           fileBuff.length /
           10 ** 6
-        ).toFixed(2)}MB profile folder successfully!`
+        ).toFixed(2)}MB`
       );
     } catch (err) {
       if (err instanceof Error)
-        console.error(
-          `[Cluster ${process.env.pm_id}][S3][${this.profile_id}] Failed to upload profile folder, ${err.message}`
-        );
+        logError(`[S3] Failed to upload profile folder: ${profileId}, ` + err);
     }
   }
 
@@ -258,14 +257,10 @@ export class GoLogin {
 
     try {
       await this.s3.upload(uploadFileParams).promise();
-      console.log(
-        `[Cluster ${process.env.pm_id}][S3][${this.profile_id}] Uploaded profile json successfully!`
-      );
+      await logInfo(`[S3] Uploaded profile json: ${profileId}`);
     } catch (err) {
       if (err instanceof Error)
-        console.error(
-          `[Cluster ${process.env.pm_id}][S3][${this.profile_id}] Failed to upload profile json, ${err.message}`
-        );
+        logError(`[S3] Failed to upload profile json: ${profileId}, ` + err);
     }
   }
 
@@ -441,9 +436,7 @@ export class GoLogin {
       try {
         profile_folder = await this.getS3ProfileFolder(this.profile_id);
         if (profile_folder)
-          console.log(
-            `[Cluster ${process.env.pm_id}][S3] Found profile ${this.profile_id}`
-          );
+          await logInfo(`[S3] Found profile: ${this.profile_id}`);
       } catch (e) {
         debug("Cannot get profile - using empty", e);
       }
@@ -1350,7 +1343,7 @@ export class GoLogin {
       }
 
       const fingerprint = await requests.get(
-        `${API_URL}/browser/fingerprint?os=${os}`,
+        `${API_URL}/browser/fingerprint?os=${os}&isM1=false`,
         {
           headers: {
             Authorization: `Bearer ${this.access_token}`,

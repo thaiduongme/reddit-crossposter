@@ -77,3 +77,10 @@ export enum SubredditPostType {
 export enum PostSource {
   NSFWMonster = "NSFWMonster.io",
 }
+
+export enum BotType {
+  KARMA_FARMER = "KARMA_FARMER",
+  CROSS_POSTER = "CROSS_POSTER",
+  CONTENT_POSTER = "CONTENT_POSTER",
+  ACCOUNT_CREATOR = "ACCOUNT_CREATOR",
+}
