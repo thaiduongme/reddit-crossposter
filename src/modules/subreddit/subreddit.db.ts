@@ -69,7 +69,7 @@ export class SubredditDB {
       },
     ];
 
-    return await SubredditEntity.findOneAndUpdate(
+    const targetSubreddit = await SubredditEntity.findOneAndUpdate(
       {
         status: true,
         usedFor: SubredditUsedFor.MULTI_PURPOSE,
@@ -84,10 +84,17 @@ export class SubredditDB {
         },
       }
     ).sort({ numUses: 1 });
+
+    if (!targetSubreddit?.numUses) {
+      targetSubreddit.numUses = 1;
+      await targetSubreddit.save();
+    }
+
+    return targetSubreddit;
   }
 
   async getSubredditToCrosspost(): Promise<HydratedDocument<ISubredditEntity>> {
-    return await SubredditEntity.findOneAndUpdate(
+    const targetSubreddit = await SubredditEntity.findOneAndUpdate(
       {
         status: true,
         usedFor: SubredditUsedFor.MONETIZATION,
@@ -98,6 +105,13 @@ export class SubredditDB {
         },
       }
     ).sort({ numUses: 1 });
+
+    if (!targetSubreddit?.numUses) {
+      targetSubreddit.numUses = 1;
+      await targetSubreddit.save();
+    }
+
+    return targetSubreddit;
   }
 
   async getSubredditToCrosspostTo(
@@ -142,7 +156,7 @@ export class SubredditDB {
       },
     ];
 
-    return await SubredditEntity.findOneAndUpdate(
+    const targetSubreddit = await SubredditEntity.findOneAndUpdate(
       {
         status: true,
         usedFor: SubredditUsedFor.MULTI_PURPOSE,
@@ -157,5 +171,12 @@ export class SubredditDB {
         },
       }
     ).sort({ numUses: 1 });
+
+    if (!targetSubreddit?.numUses) {
+      targetSubreddit.numUses = 1;
+      await targetSubreddit.save();
+    }
+
+    return targetSubreddit;
   }
 }
